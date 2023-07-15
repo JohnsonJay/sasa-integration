@@ -22,8 +22,8 @@ export interface Fields {
 }
 
 export interface FarmerData {
-    uuid: string;
-    name: string;
+    uuid?: string | null;
+    name?: string | null;
     created_at: string;
     updated_at: string;
     msisdn?: string;
@@ -49,8 +49,8 @@ export interface FeatureLayer {
         },
     } | null;
     attributes: {
-        farmer_uuid: string;
-        farmer_name: string;
+        farmer_uuid?: string | null;
+        farmer_name?: string | null;
         farmer_field_uuid?: string | null;
         farmer_gender?: string | null;
         farmer_identity_type?: string | null;

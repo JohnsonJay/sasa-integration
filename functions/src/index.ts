@@ -14,13 +14,16 @@ const POINT_LAYER_FEATURE_SERVICE = "https://services-eu1.arcgis.com/gq4tFiP3X79
 const fetchData = async () => {
   const url = "https://api.sasa.solutions/api/eco_bw/farmers";
   const endDate = new Date(); // Current timestamp
-  const endTimestamp = Math.floor(endDate.getTime() / 1000) - 24 * 60 * 60;
+  const endTimestamp = endDate.getTime() / 1000;
 
 
   // eslint-disable-next-line max-len
   const startDate = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours ago
-  const startTimestamp = Math.floor(startDate.getTime() / 1000) - 24 * 60 * 60;
+  const startTimestamp = Math.floor(startDate.getTime() / 1000);
   const token = "7aSusl5mMW0BCPg8jZI8Fcf5LmF64k0P";
+
+  // eslint-disable-next-line max-len
+  functions.logger.info("These are the timestamps:", {startTimestamp, endTimestamp});
 
   const headers = {
     Authorization: `${token}`,
@@ -55,8 +58,8 @@ const buildPointFeatureLayer = (farmer: FarmerData) => {
     };
 
     const attributes = {
-      farmer_uuid: farmer.uuid,
-      farmer_name: farmer.name,
+      farmer_uuid: farmer.uuid ? farmer.uuid : null,
+      farmer_name: farmer.name ? farmer.name : null,
       farmer_gender: farmer.demographic.gender,
       identity_type: farmer.demographic.identity_type,
       identity_number: farmer.demographic.identity_number,
@@ -111,7 +114,8 @@ const buildPolygonFeatureLayer = (farmer: FarmerData) => {
   const attributes = {
     farmer_uuid: farmer.uuid,
     farmer_name: farmer.name,
-    farmer_field_uuid: farmer.fields ? farmer.fields[0].uuid : null,
+    // eslint-disable-next-line max-len
+    farmer_field_uuid: farmer.fields && farmer.fields[0] ? farmer.fields[0].uuid : null,
     // eslint-disable-next-line max-len
     farmer_gender: farmer.demographic.gender? farmer.demographic.gender : null,
     // eslint-disable-next-line max-len
@@ -234,40 +238,56 @@ const processFarmerData = async ( data: FarmerData[] ) => {
       try {
         // check if farmer exists in firestore
         // eslint-disable-next-line max-len
-        const farmerRef = await admin.firestore().collection("farmers").doc(farmer.uuid).get();
-        if (!farmerRef.exists) {
-          const polygonFeature = buildPolygonFeatureLayer(farmer);
-          const pointFeature = buildPointFeatureLayer(farmer);
-
+        if (farmer.uuid) {
           // eslint-disable-next-line max-len
-          const addPolygonResult = await addPolygonDataToArcGIS(polygonFeature);
-          const addPointResult = await addPointDataToArcGIS(pointFeature);
-
+          functions.logger.info(`Processing farmer data: ${JSON.stringify(farmer)}`);
           // eslint-disable-next-line max-len
-          functions.logger.info( `Successfully added farmer with farmer_uuid ${ farmer.uuid } and farmer_name ${ farmer.name } to ArcGIS` );
-
-          // eslint-disable-next-line max-len
-          if (
-            addPolygonResult.data.addResults[0].success.toString() == "true" &&
-            addPointResult.data.addResults[0].success.toString() == "true"
-          ) {
-            const {objectId, globalId} = addPolygonResult.data.addResults[0];
+          const farmerRef = await admin.firestore().collection("farmers").doc(farmer.uuid).get();
+          if (!farmerRef.exists) {
+            const polygonFeature = buildPolygonFeatureLayer(farmer);
+            const pointFeature = buildPointFeatureLayer(farmer);
 
             // eslint-disable-next-line max-len
-            await admin.firestore().collection( "farmers" ).doc( farmer.uuid ).set( {...farmer, objectId, globalId} );
-            // eslint-disable-next-line max-len
-            functions.logger.info( `Successfully added farmer with object id ${ objectId } and global id ${ globalId } to Firestore - ${ farmer.uuid }` );
-          }
-        } else {
-          const feature = buildPolygonFeatureLayer( farmer );
-          // update farmer in firestore
-          const result = await updateDataInArcGIS( feature );
+            const addPolygonResult = await addPolygonDataToArcGIS(polygonFeature);
+            const addPointResult = await addPointDataToArcGIS(pointFeature);
 
-          if (result.data.updateResults[0].success.toString() == "true") {
             // eslint-disable-next-line max-len
-            await admin.firestore().collection( "farmers" ).doc( farmer.uuid ).update( {...farmer} );
+            functions.logger.info( `Successfully added farmer with farmer_uuid ${ farmer.uuid } and farmer_name ${ farmer.name } to ArcGIS` );
+
             // eslint-disable-next-line max-len
-            functions.logger.info(`Successfully updated farmer with farmer_uuid ${ farmer.uuid } and farmer_name ${ farmer.name } to ArcGIS` );
+            if (
+            // eslint-disable-next-line max-len
+              addPolygonResult.data.addResults[0].success.toString() == "true" &&
+                addPointResult.data.addResults[0].success.toString() == "true"
+            ) {
+              const {objectId, globalId} = addPolygonResult.data.addResults[0];
+
+              // eslint-disable-next-line max-len
+              // eslint-disable-next-line max-len
+              await admin.firestore().collection( "farmers" ).doc( farmer.uuid ).set( {
+                ...farmer,
+                objectId,
+                globalId,
+              } );
+              // eslint-disable-next-line max-len
+              functions.logger.info( `Successfully added farmer with object id ${ objectId } and global id ${ globalId } to Firestore - ${ farmer.uuid }` );
+            }
+          } else {
+            const feature = buildPolygonFeatureLayer( farmer );
+            functions.logger.info("this is the feature: ", feature);
+            // update farmer in firestore
+            const result = await updateDataInArcGIS( feature );
+            functions.logger.info("this is the result: ", result);
+
+            if (result.data.updateResults[0].success.toString() == "true") {
+              // eslint-disable-next-line max-len
+              if ( farmer.uuid != null ) {
+                // eslint-disable-next-line max-len
+                await admin.firestore().collection( "farmers" ).doc( farmer.uuid ).update( {...farmer} );
+              }
+              // eslint-disable-next-line max-len
+              functions.logger.info(`Successfully updated farmer with farmer_uuid ${ farmer.uuid } and farmer_name ${ farmer.name } to ArcGIS` );
+            }
           }
         }
       } catch (error) {
@@ -277,67 +297,6 @@ const processFarmerData = async ( data: FarmerData[] ) => {
     }
   }
 };
-
-// const deleteData = async (data: FarmerData) => {
-//   const featureLayer = buildPolygonFeatureLayer(data);
-//
-//   try {
-//     // using Promise.all to run both functions at the same time
-//     await Promise.all( [
-//       // eslint-disable-next-line max-len
-//       admin.firestore().collection( "farmers" ).doc(data.uuid).delete(),
-//       deleteDataInArcGIS( featureLayer ),
-//     ] );
-//     // eslint-disable-next-line max-len
-// eslint-disable-next-line max-len
-//     functions.logger.info(`Successfully deleted farmer with farmer_uuid ${data.uuid} and farmer_name ${data.name} from ArcGIS`);
-//   } catch (error) {
-//     functions.logger.error("Error deleting farmer data");
-//     throw (error);
-//   }
-// };
-
-// const updateData = async (data: FarmerData) => {
-//   const featureLayer = buildPolygonFeatureLayer(data);
-//
-//   try {
-//     // using Promise.all to run both functions at the same time
-//     await Promise.all( [
-//       // eslint-disable-next-line max-len,@typescript-eslint/ban-ts-comment
-//       // @ts-ignore
-//       // eslint-disable-next-line max-len
-// eslint-disable-next-line max-len
-//       admin.firestore().collection( "farmers" ).doc(data.uuid).update( {...data}),
-//       updateDataInArcGIS( featureLayer ),
-//     ] );
-//     // eslint-disable-next-line max-len
-// eslint-disable-next-line max-len
-//     functions.logger.info(`Successfully updated farmer with farmer_uuid ${data.uuid} and farmer_name ${data.name} from ArcGIS`);
-//   } catch (error) {
-//     functions.logger.error("Error updating farmer data");
-//     throw (error);
-//   }
-// };
-
-// const addData = async (data: FarmerData) => {
-//   const featureLayer = buildPolygonFeatureLayer(data);
-//
-//   try {
-//     // using Promise.all to run both functions at the same time
-//     await Promise.all( [
-//       // eslint-disable-next-line max-len,@typescript-eslint/ban-ts-comment
-//       // @ts-ignore
-//       admin.firestore().collection( "farmers" ).doc(data.uuid).set(data),
-//       addPolygonDataToArcGIS( featureLayer ),
-//     ] );
-//     // eslint-disable-next-line max-len
-// eslint-disable-next-line max-len
-//     functions.logger.info(`Successfully added farmer with farmer_uuid ${data.uuid} and farmer_name ${data.name} to ArcGIS`);
-//   } catch (error) {
-//     functions.logger.error("Error adding farmer data");
-//     throw (error);
-//   }
-// };
 
 // main function that will be triggered every day at 04:50 UTC
 // eslint-disable-next-line max-len
@@ -367,7 +326,10 @@ exports.manualAddData = functions.https.onRequest(async ( request, response ) =>
       functions.logger.info(`Successfully added farmer with objectId: ${objectId} and globalId: ${globalId} to ArcGIS`);
 
       // eslint-disable-next-line max-len
-      await admin.firestore().collection("farmers").doc(farmData.uuid).set({...farmData, objectId, globalId});
+      if ( farmData.uuid != null ) {
+        // eslint-disable-next-line max-len
+        await admin.firestore().collection( "farmers" ).doc( farmData.uuid ).set( {...farmData, objectId, globalId} );
+      }
       response.status(200).send(JSON.stringify(result.data.addResults));
     }
   } catch (error) {

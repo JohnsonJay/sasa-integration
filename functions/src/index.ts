@@ -5,8 +5,8 @@ import {FarmerData} from "./interfaces";
 
 admin.initializeApp();
 
-const POLYGON_FEATURE_SERVICE = "https://services-eu1.arcgis.com/gq4tFiP3X79azbdV/arcgis/rest/services/farmer_field_layer/FeatureServer/0";
-const POINT_LAYER_FEATURE_SERVICE = "https://services-eu1.arcgis.com/gq4tFiP3X79azbdV/arcgis/rest/services/farmer_assessment_layer/FeatureServer/0";
+// const POLYGON_FEATURE_SERVICE = "https://services-eu1.arcgis.com/gq4tFiP3X79azbdV/arcgis/rest/services/Farm_Land_Layer/FeatureServer/0";
+// const POINT_LAYER_FEATURE_SERVICE = "https://services-eu1.arcgis.com/gq4tFiP3X79azbdV/arcgis/rest/services/farmer_assessment_layer/FeatureServer/0";
 
 /**
  * Fetches data from the SASA API and returns the output
@@ -16,13 +16,11 @@ const fetchData = async () => {
   const endDate = new Date(); // Current timestamp
   const endTimestamp = endDate.getTime() / 1000;
 
-
-  // eslint-disable-next-line max-len
   const startDate = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours ago
   const startTimestamp = Math.floor(startDate.getTime() / 1000);
   const token = "7aSusl5mMW0BCPg8jZI8Fcf5LmF64k0P";
 
-  // eslint-disable-next-line max-len
+
   functions.logger.info("These are the timestamps:", {startTimestamp, endTimestamp});
 
   const headers = {
@@ -42,6 +40,27 @@ const fetchData = async () => {
     throw error;
   }
 };
+
+// const writeDataToFirebaseStorage = (data: any) => {
+//   // write data to firebase storage
+//   const bucket = admin.storage().bucket();
+//   const file = bucket.file("farmers.json");
+//
+//   // const stringifiedData = JSON.stringify(data);
+//   const buffer = Buffer.from(data, "utf8");
+//
+//   file.save(buffer, {
+//     gzip: true,
+//     metadata: {
+//       cacheControl: "public, max-age=31536000",
+//       contentType: "application/json",
+//     },
+//   }).then(() => {
+//     functions.logger.info("File written successfully");
+//   }).catch((error) => {
+//     functions.logger.error("Error writing file:", error);
+//   });
+// };
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
@@ -96,9 +115,8 @@ const buildPolygonFeatureLayer = (farmer: FarmerData) => {
     }
 
     // check if the first and last coordinates are the same
-    // eslint-disable-next-line max-len
+
     if (coordinateData[0][0] !== coordinateData[coordinateData.length - 1][0] && coordinateData[0][1] !== coordinateData[coordinateData.length - 1][1]) {
-      // eslint-disable-next-line max-len
       // add to the end of the array to close the polygon
       coordinateData.push(coordinateData[0][0], coordinateData[0][1]);
     }
@@ -114,13 +132,13 @@ const buildPolygonFeatureLayer = (farmer: FarmerData) => {
   const attributes = {
     farmer_uuid: farmer.uuid,
     farmer_name: farmer.name,
-    // eslint-disable-next-line max-len
+
     farmer_field_uuid: farmer.fields && farmer.fields[0] ? farmer.fields[0].uuid : null,
-    // eslint-disable-next-line max-len
+
     farmer_gender: farmer.demographic.gender? farmer.demographic.gender : null,
-    // eslint-disable-next-line max-len
+
     farmer_identity_type: farmer.demographic.identity_type ? farmer.demographic.identity_type : null,
-    // eslint-disable-next-line max-len
+
     farmer_identity_number: farmer.demographic.identity_number ? farmer.demographic.identity_number : null,
     farmer_created_at: farmer.created_at || null,
   };
@@ -135,159 +153,141 @@ const buildPolygonFeatureLayer = (farmer: FarmerData) => {
   return featureLayers;
 };
 
-const addPolygonDataToArcGIS = async (data: any) => {
-  // eslint-disable-next-line max-len
-  const url = `${POLYGON_FEATURE_SERVICE}/addFeatures?f=json`;
-  const config = {
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      "Accept": "application/json",
-    },
-  };
-
-  const formData = {
-    "features": JSON.stringify(data),
-  };
-
-
-  try {
-    const result = await axios.post(url, formData, config);
-    functions.logger.info(result);
-    return result;
-  } catch (error) {
-    functions.logger.error(error);
-    throw (error);
-  }
-};
-
-const addPointDataToArcGIS = async (data: any) => {
-  // eslint-disable-next-line max-len
-  const url = `${POINT_LAYER_FEATURE_SERVICE}/addFeatures?f=json`;
-  const config = {
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      "Accept": "application/json",
-    },
-  };
-
-  const formData = {
-    "features": JSON.stringify(data),
-  };
-
-
-  try {
-    const result = await axios.post(url, formData, config);
-    functions.logger.info(result);
-    return result;
-  } catch (error) {
-    functions.logger.error(error);
-    throw (error);
-  }
-};
-
-const updateDataInArcGIS = async (data: any) => {
-  const url = `${POLYGON_FEATURE_SERVICE}/updateFeatures?f=json`;
-  const config = {
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      "Accept": "application/json",
-    },
-  };
-
-  const formData = {
-    "features": JSON.stringify(data),
-  };
-
-  try {
-    const result = await axios.post(url, formData, config);
-    functions.logger.info(result);
-    return result;
-  } catch (error) {
-    functions.logger.error(error);
-    throw (error);
-  }
-};
-
-const deleteDataInArcGIS = async (data: any) => {
-  const url = `${POLYGON_FEATURE_SERVICE}/deleteFeatures?f=json`;
-  const config = {
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      "Accept": "application/json",
-    },
-  };
-
-  const formData = {
-    "features": JSON.stringify(data),
-  };
-
-  try {
-    const result = await axios.post(url, formData, config);
-    functions.logger.info(result);
-    return result;
-  } catch (error) {
-    functions.logger.error(error);
-    throw (error);
-  }
-};
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+// const addPolygonDataToArcGIS = async (data: any) => {
+//
+//   const url = `${POLYGON_FEATURE_SERVICE}/addFeatures?f=json`;
+//   const config = {
+//     headers: {
+//       "Content-Type": "application/x-www-form-urlencoded",
+//       "Accept": "application/json",
+//     },
+//   };
+//
+//   const formData = {
+//     "features": JSON.stringify(data),
+//   };
+//
+//
+//   try {
+//     const result = await axios.post(url, formData, config);
+//     functions.logger.info(result);
+//     return result;
+//   } catch (error) {
+//     functions.logger.error(error);
+//     throw (error);
+//   }
+// };
+//
+// const addPointDataToArcGIS = async (data: any) => {
+//
+//   const url = `${POINT_LAYER_FEATURE_SERVICE}/addFeatures?f=json`;
+//   const config = {
+//     headers: {
+//       "Content-Type": "application/x-www-form-urlencoded",
+//       "Accept": "application/json",
+//     },
+//   };
+//
+//   const formData = {
+//     "features": JSON.stringify(data),
+//   };
+//
+//
+//   try {
+//     const result = await axios.post(url, formData, config);
+//     functions.logger.info(result);
+//     return result;
+//   } catch (error) {
+//     functions.logger.error(error);
+//     throw (error);
+//   }
+// };
+//
+// const updateDataInArcGIS = async (data: any) => {
+//   const url = `${POLYGON_FEATURE_SERVICE}/updateFeatures?f=json`;
+//   const config = {
+//     headers: {
+//       "Content-Type": "application/x-www-form-urlencoded",
+//       "Accept": "application/json",
+//     },
+//   };
+//
+//   const formData = {
+//     "features": JSON.stringify(data),
+//   };
+//
+//   try {
+//     const result = await axios.post(url, formData, config);
+//     functions.logger.info(result);
+//     return result;
+//   } catch (error) {
+//     functions.logger.error(error);
+//     throw (error);
+//   }
+// };
 
 const processFarmerData = async ( data: FarmerData[] ) => {
   for (const farmer of data) {
     if (farmer) {
       functions.logger.info(`Processing farmer: ${farmer.uuid} ${farmer.name}`);
       try {
-        // check if farmer exists in firestore
-        // eslint-disable-next-line max-len
         if (farmer.uuid) {
-          // eslint-disable-next-line max-len
           functions.logger.info(`Processing farmer data: ${JSON.stringify(farmer)}`);
-          // eslint-disable-next-line max-len
+
           const farmerRef = await admin.firestore().collection("farmers").doc(farmer.uuid).get();
           if (!farmerRef.exists) {
-            const polygonFeature = buildPolygonFeatureLayer(farmer);
-            const pointFeature = buildPointFeatureLayer(farmer);
+            await saveFeatureLayerDataToFirestoreAndFirebase(farmer);
 
-            // eslint-disable-next-line max-len
-            const addPolygonResult = await addPolygonDataToArcGIS(polygonFeature);
-            const addPointResult = await addPointDataToArcGIS(pointFeature);
+            // const addPolygonResult = await addPolygonDataToArcGIS(polygonFeature);
+            // const addPointResult = await addPointDataToArcGIS(pointFeature);
 
-            // eslint-disable-next-line max-len
-            functions.logger.info( `Successfully added farmer with farmer_uuid ${ farmer.uuid } and farmer_name ${ farmer.name } to ArcGIS` );
+            // functions.logger.info("addPolygonResult", addPolygonResult);
+            // functions.logger.info("addPointResult", addPointResult);
 
-            // eslint-disable-next-line max-len
-            if (
-            // eslint-disable-next-line max-len
-              addPolygonResult.data.addResults[0].success.toString() == "true" &&
-                addPointResult.data.addResults[0].success.toString() == "true"
-            ) {
-              const {objectId, globalId} = addPolygonResult.data.addResults[0];
 
-              // eslint-disable-next-line max-len
-              // eslint-disable-next-line max-len
-              await admin.firestore().collection( "farmers" ).doc( farmer.uuid ).set( {
-                ...farmer,
-                objectId,
-                globalId,
-              } );
-              // eslint-disable-next-line max-len
-              functions.logger.info( `Successfully added farmer with object id ${ objectId } and global id ${ globalId } to Firestore - ${ farmer.uuid }` );
-            }
+            // if (
+            //
+
+            //   addPolygonResult.data.addResults[0].success.toString() == "true" ||
+
+            //     addPointResult.data.addResults[0].success.toString() == "true"
+            // ) {
+            //
+            //   functions.logger.info( `Successfully added farmer with farmer_uuid ${ farmer.uuid } and farmer_name ${ farmer.name } to ArcGIS` );
+            //   // const {objectId, globalId} = addPolygonResult.data.addResults[0];
+            //
+            //
+            //
+            //   functions.logger.info( `Successfully added farmer with object id ${ objectId } and global id ${ globalId } to Firestore - ${ farmer.uuid }` );
+            // }
           } else {
-            const feature = buildPolygonFeatureLayer( farmer );
-            functions.logger.info("this is the feature: ", feature);
-            // update farmer in firestore
-            const result = await updateDataInArcGIS( feature );
-            functions.logger.info("this is the result: ", result);
-
-            if (result.data.updateResults[0].success.toString() == "true") {
-              // eslint-disable-next-line max-len
-              if ( farmer.uuid != null ) {
-                // eslint-disable-next-line max-len
-                await admin.firestore().collection( "farmers" ).doc( farmer.uuid ).update( {...farmer} );
-              }
-              // eslint-disable-next-line max-len
-              functions.logger.info(`Successfully updated farmer with farmer_uuid ${ farmer.uuid } and farmer_name ${ farmer.name } to ArcGIS` );
-            }
+            await saveFeatureLayerDataToFirestoreAndFirebase(farmer);
+            // const feature = buildPolygonFeatureLayer( farmer );
+            // functions.logger.info(
+            //   "this is the feature: ",
+            //   JSON.stringify(feature)
+            // );
+            // // update farmer in firestore
+            // const result = await updateDataInArcGIS( feature );
+            // functions.logger.info("this is the result: ", result);
+            //
+            // if (result.data.error) {
+            //   throw new Error(result.data.error.details[0]);
+            // }
+            //
+            // if (
+            //   result.data.updateResults &&
+            //     result.data.updateResults[0].success.toString() == "true"
+            // ) {
+            //
+            //   if ( farmer.uuid != null ) {
+            //
+            //     await admin.firestore().collection( "farmers" ).doc( farmer.uuid ).update( {...farmer} );
+            //   }
+            //
+            //   functions.logger.info(`Successfully updated farmer with farmer_uuid ${ farmer.uuid } and farmer_name ${ farmer.name } to ArcGIS` );
+            // }
           }
         }
       } catch (error) {
@@ -298,73 +298,65 @@ const processFarmerData = async ( data: FarmerData[] ) => {
   }
 };
 
+const saveFeatureLayerDataToFirestoreAndFirebase = async (farmer: any) => {
+  const polygonFeature = buildPolygonFeatureLayer(farmer);
+  const pointFeature = buildPointFeatureLayer(farmer);
+
+  functions.logger.info("polygonFeature", polygonFeature);
+  functions.logger.info("pointFeature", pointFeature);
+
+  await Promise.all([
+    admin.firestore().collection( "farmers" ).doc( farmer.uuid ).set( {
+      ...farmer,
+      // objectId,
+      // globalId,
+    }),
+    admin.database().ref(`"polygon-feature-layers"/${farmer.uuid}`).set({
+      ...polygonFeature,
+      lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+    }),
+    admin.database().ref(`"point-feature-layers"/${farmer.uuid}`).set({
+      ...pointFeature,
+      lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+    }),
+  ]);
+};
+
+const saveAllDataToFirebase = async (data: FarmerData[]) => {
+  for (const farmer of data) {
+    await admin.database().ref(`"sasa-raw-data"/${farmer.uuid}`).set({
+      ...farmer,
+      dataSynced: false,
+      lastDataSyncEvent: null,
+    });
+  }
+};
+
 // main function that will be triggered every day at 04:50 UTC
-// eslint-disable-next-line max-len
+
 exports.dailyScheduledFunction = functions.pubsub.schedule("50 4 * * *").onRun(async ( context ) => {
   // info log the function time start in UTC
   functions.logger.info( "This will be run every day at 04:50 UTC!" );
   try {
     const data: FarmerData[] = await fetchData();
-    await processFarmerData( data );
+    await Promise.allSettled([
+      processFarmerData(data),
+      saveAllDataToFirebase(data),
+    ]);
+    // await writeDataToFirebaseStorage( data );
+    // await processFarmerData( data );
   } catch (error) {
     functions.logger.error( error );
   }
 });
 
-// eslint-disable-next-line max-len
-exports.manualAddData = functions.https.onRequest(async ( request, response ) => {
+
+
+exports.dailySasaDataSync = functions.pubsub.schedule("50 4 * * *").onRun(async ( context ) => {
   try {
-    const farmData: FarmerData = request.body.data[0];
-
-    const feature = buildPolygonFeatureLayer( farmData );
-    functions.logger.log(JSON.stringify(feature));
-    const result = await addPolygonDataToArcGIS( feature );
-
-    if (result.data.addResults[0].success.toString() == "true") {
-      const {objectId, globalId} = result.data.addResults[0];
-      // eslint-disable-next-line max-len
-      functions.logger.info(`Successfully added farmer with objectId: ${objectId} and globalId: ${globalId} to ArcGIS`);
-
-      // eslint-disable-next-line max-len
-      if ( farmData.uuid != null ) {
-        // eslint-disable-next-line max-len
-        await admin.firestore().collection( "farmers" ).doc( farmData.uuid ).set( {...farmData, objectId, globalId} );
-      }
-      response.status(200).send(JSON.stringify(result.data.addResults));
-    }
+    const data: FarmerData[] = await fetchData();
+    await saveAllDataToFirebase(data);
   } catch (error) {
-    functions.logger.error(error);
-    response.status(500).send(error);
+    functions.logger.error( error );
   }
 });
-
-// eslint-disable-next-line max-len
-exports.manualDeleteData = functions.https.onRequest(async ( request, response ) => {
-  const {farmerUuid} = request.body;
-
-  try {
-    // fetch farmer data from firestore
-    // eslint-disable-next-line max-len
-    const farmer = await admin.firestore().collection("farmers").doc(farmerUuid).get();
-    if (farmer.exists) {
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
-      const farmerData = farmer.data() as FarmerData;
-      const feature = buildPolygonFeatureLayer(farmerData);
-      const result = await deleteDataInArcGIS( feature );
-
-      if (result.data.deleteResults[0].success.toString() == "true") {
-        // eslint-disable-next-line max-len
-        functions.logger.info(`Successfully deleted farmer with objectId: ${farmerData.objectId} and globalId: ${farmerData.globalId} from ArcGIS`);
-
-        // eslint-disable-next-line max-len
-        await admin.firestore().collection("farmers").doc(farmerUuid).delete();
-        response.status(200).send(JSON.stringify(result.data.deleteResults));
-      }
-    }
-  } catch (error) {
-    functions.logger.error(error);
-    throw (error);
-  }
-});
-

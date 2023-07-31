@@ -1,7 +1,7 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import axios from "axios";
-import {FarmerData} from "./interfaces";
+import { FarmerData } from "./interfaces";
 
 admin.initializeApp();
 
@@ -94,6 +94,8 @@ const buildPointFeatureLayer = (farmer: FarmerData) => {
   }
 };
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore
 const buildPolygonFeatureLayer = (farmer: FarmerData) => {
   const coordinateData = [];
   const featureLayers = [];
@@ -105,6 +107,17 @@ const buildPolygonFeatureLayer = (farmer: FarmerData) => {
       functions.logger.info("Farmer has more than one field");
       // eslint-disable-next-line @typescript-eslint/ban-ts-comment
       // buildPolygonFeatureLayer()
+
+      for (const field of farmer.fields) {
+        const newFarmer = farmer;
+        newFarmer.fields = [field];
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        const polygonLayer = buildPolygonFeatureLayer(newFarmer);
+        featureLayers.push(polygonLayer);
+      }
+
+      return featureLayers;
     }
 
 
@@ -143,14 +156,10 @@ const buildPolygonFeatureLayer = (farmer: FarmerData) => {
     farmer_created_at: farmer.created_at || null,
   };
 
-  const featureLayer = {
+  return {
     geometry: coordinateData.length > 0 ? geometry : null,
     attributes,
   };
-
-  featureLayers.push(featureLayer);
-
-  return featureLayers;
 };
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -324,10 +333,10 @@ const saveFeatureLayerDataToFirestoreAndFirebase = async (farmer: any) => {
 
 const saveAllDataToFirebase = async (data: FarmerData[]) => {
   for (const farmer of data) {
-    await admin.database().ref(`"sasa-raw-data"/${farmer.uuid}`).set({
+    await admin.database().ref(`sasa-raw-data/sasa-data-list/${farmer.uuid}`).set({
       ...farmer,
       dataSynced: false,
-      lastDataSyncEvent: null,
+      lastDataSyncEvent: admin.firestore.FieldValue.serverTimestamp(),
     });
   }
 };
@@ -350,8 +359,6 @@ exports.dailyScheduledFunction = functions.pubsub.schedule("50 4 * * *").onRun(a
   }
 });
 
-
-
 exports.dailySasaDataSync = functions.pubsub.schedule("50 4 * * *").onRun(async ( context ) => {
   try {
     const data: FarmerData[] = await fetchData();
@@ -359,4 +366,57 @@ exports.dailySasaDataSync = functions.pubsub.schedule("50 4 * * *").onRun(async 
   } catch (error) {
     functions.logger.error( error );
   }
+});
+
+exports.generateFeatureLayers = functions.pubsub.schedule("every 30 minutes").onRun(async ( context ) => {
+  try {
+    // retrieve 5 records from firebase db where dataSynced is false
+    const sasaDataListRef = admin.database().ref("/sasa-raw-data");
+    await sasaDataListRef.child("sasa-data-list").orderByChild("dataSynced").equalTo(false).limitToFirst(5).once( "value", async ( snapshot ) => {
+      const availableData = snapshot.val();
+      if (!availableData) {
+        functions.logger.info( "No data to process" );
+        return;
+      }
+
+      // iterate through availableData
+      for (const key in availableData) {
+        // eslint-disable-next-line no-prototype-builtins
+        if (availableData.hasOwnProperty(key)) {
+          const farmer = availableData[key];
+          // build polygon feature layer
+          const polygonFeature = buildPolygonFeatureLayer(farmer);
+          if (polygonFeature) {
+            if (Array.isArray(polygonFeature)) {
+              for (const feature of polygonFeature) {
+                await admin.database().ref(`polygon-feature-layers/polygon-layers-list/${farmer.uuid}`).set({
+                  ...feature,
+                  dataSynced: false,
+                  lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+                });
+              }
+            } else {
+              await admin.database().ref(`polygon-feature-layers/polygon-layers-list/${farmer.uuid}`).set({
+                ...polygonFeature,
+                dataSynced: false,
+                lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+              });
+            }
+          }
+          functions.logger.info( "polygon feature layer", polygonFeature );
+        }
+      }
+
+      functions.logger.info( "Available data to process", availableData);
+    }, ( error ) => {
+      functions.logger.error( error );
+    });
+  } catch (error) {
+    functions.logger.error(error);
+  }
+});
+
+exports.deleteSasaDataSchema = functions.https.onRequest(async ( request, response ) => {
+  await admin.database().ref("sasa-raw-data").remove();
+  response.status(200).send("Sasa data schema deleted");
 });

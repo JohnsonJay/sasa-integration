@@ -1,7 +1,7 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import axios from "axios";
-import { FarmerData } from "./interfaces";
+import {FarmerData, FeatureLayer, Location} from "./interfaces";
 
 admin.initializeApp();
 
@@ -96,9 +96,11 @@ const buildPointFeatureLayer = (farmer: FarmerData) => {
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-const buildPolygonFeatureLayer = (farmer: FarmerData) => {
-  const coordinateData = [];
-  const featureLayers = [];
+const buildPolygonFeatureLayer = (farmer: FarmerData): FeatureLayer | FeatureLayer[] => {
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-ignore
+  const coordinateData: [Location[]] = [];
+  const featureLayers: [FeatureLayer] | any = [];
 
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
   // @ts-ignore
@@ -108,35 +110,98 @@ const buildPolygonFeatureLayer = (farmer: FarmerData) => {
       // eslint-disable-next-line @typescript-eslint/ban-ts-comment
       // buildPolygonFeatureLayer()
 
+
       for (const field of farmer.fields) {
         const newFarmer = farmer;
-        newFarmer.fields = [field];
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-ignore
-        const polygonLayer = buildPolygonFeatureLayer(newFarmer);
+        const fieldCoordinateData: [Location[]] = [];
+
+        newFarmer.fields = [field];
+        functions.logger.info("newFarmer", newFarmer);
+        functions.logger.info("newFarmer.fields", newFarmer.fields);
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        // build polygon layer here
+
+        if (Array.isArray(farmer.fields)) {
+          const field = farmer.fields[0];
+
+          if (field["map"] && field["map"].length > 0) {
+            for (const coordinates of field["map"]) {
+              // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+              // @ts-ignore
+              fieldCoordinateData.push([coordinates.longitude, coordinates.latitude]);
+            }
+
+            if (fieldCoordinateData) {
+              if (fieldCoordinateData[0][0] !== fieldCoordinateData[fieldCoordinateData.length - 1][0] && fieldCoordinateData[0][1] !== fieldCoordinateData[fieldCoordinateData.length - 1][1]) {
+                // add to the end of the array to close the polygon
+                fieldCoordinateData.push([fieldCoordinateData[0][0], fieldCoordinateData[0][1]]);
+              }
+            }
+          }
+        }
+
+        const geometry = {
+          rings: fieldCoordinateData,
+          spatialReference: {
+            wkid: 4326,
+          },
+        };
+
+        const attributes = {
+          farmer_uuid: newFarmer.uuid,
+          farmer_name: newFarmer.name,
+          farmer_field_uuid: newFarmer.fields && newFarmer.fields[0] ? newFarmer.fields[0].uuid : null,
+          farmer_gender: newFarmer.demographic.gender? newFarmer.demographic.gender : null,
+          farmer_identity_type: newFarmer.demographic.identity_type ? newFarmer.demographic.identity_type : null,
+          farmer_identity_number: newFarmer.demographic.identity_number ? newFarmer.demographic.identity_number : null,
+          farmer_created_at: newFarmer.created_at || null,
+        };
+
+        const polygonLayer = {
+          geometry: fieldCoordinateData.length > 0 ? geometry : null,
+          attributes,
+        };
+
         featureLayers.push(polygonLayer);
       }
+
+      functions.logger.info("featureLayers", featureLayers);
 
       return featureLayers;
     }
 
+    functions.logger.info("farmer", farmer);
 
-    if (farmer.fields[0]["map"] && farmer.fields[0]["map"].length > 0) {
-      for (const coordinates of farmer.fields[0]["map"]) {
-        coordinateData.push([coordinates.longitude, coordinates.latitude]);
+    if (Array.isArray(farmer.fields)) {
+      const field = farmer.fields[0];
+      if (field["map"] && field["map"].length > 0) {
+        for (const coordinates of field["map"]) {
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // @ts-ignore
+          coordinateData.push([coordinates.longitude, coordinates.latitude]);
+        }
       }
     }
 
+    functions.logger.info("coordinateData", coordinateData);
+
     // check if the first and last coordinates are the same
 
-    if (coordinateData[0][0] !== coordinateData[coordinateData.length - 1][0] && coordinateData[0][1] !== coordinateData[coordinateData.length - 1][1]) {
-      // add to the end of the array to close the polygon
-      coordinateData.push(coordinateData[0][0], coordinateData[0][1]);
+    if (coordinateData) {
+      if (coordinateData[0][0] !== coordinateData[coordinateData.length - 1][0] && coordinateData[0][1] !== coordinateData[coordinateData.length - 1][1]) {
+        // add to the end of the array to close the polygon
+        coordinateData.push([coordinateData[0][0], coordinateData[0][1]]);
+      }
     }
+
+    functions.logger.info("coordinateData", coordinateData);
   }
 
   const geometry = {
-    rings: [coordinateData],
+    rings: coordinateData,
     spatialReference: {
       wkid: 4326,
     },
@@ -145,13 +210,9 @@ const buildPolygonFeatureLayer = (farmer: FarmerData) => {
   const attributes = {
     farmer_uuid: farmer.uuid,
     farmer_name: farmer.name,
-
     farmer_field_uuid: farmer.fields && farmer.fields[0] ? farmer.fields[0].uuid : null,
-
     farmer_gender: farmer.demographic.gender? farmer.demographic.gender : null,
-
     farmer_identity_type: farmer.demographic.identity_type ? farmer.demographic.identity_type : null,
-
     farmer_identity_number: farmer.demographic.identity_number ? farmer.demographic.identity_number : null,
     farmer_created_at: farmer.created_at || null,
   };
@@ -236,128 +297,128 @@ const buildPolygonFeatureLayer = (farmer: FarmerData) => {
 //   }
 // };
 
-const processFarmerData = async ( data: FarmerData[] ) => {
-  for (const farmer of data) {
-    if (farmer) {
-      functions.logger.info(`Processing farmer: ${farmer.uuid} ${farmer.name}`);
-      try {
-        if (farmer.uuid) {
-          functions.logger.info(`Processing farmer data: ${JSON.stringify(farmer)}`);
+// const processFarmerData = async ( data: FarmerData[] ) => {
+//   for (const farmer of data) {
+//     if (farmer) {
+//       functions.logger.info(`Processing farmer: ${farmer.uuid} ${farmer.name}`);
+//       try {
+//         if (farmer.uuid) {
+//           functions.logger.info(`Processing farmer data: ${JSON.stringify(farmer)}`);
+//
+//           const farmerRef = await admin.firestore().collection("farmers").doc(farmer.uuid).get();
+//           if (!farmerRef.exists) {
+//             await saveFeatureLayerDataToFirestoreAndFirebase(farmer);
+//
+//             // const addPolygonResult = await addPolygonDataToArcGIS(polygonFeature);
+//             // const addPointResult = await addPointDataToArcGIS(pointFeature);
+//
+//             // functions.logger.info("addPolygonResult", addPolygonResult);
+//             // functions.logger.info("addPointResult", addPointResult);
+//
+//
+//             // if (
+//             //
+//
+//             //   addPolygonResult.data.addResults[0].success.toString() == "true" ||
+//
+//             //     addPointResult.data.addResults[0].success.toString() == "true"
+//             // ) {
+//             //
+//             //   functions.logger.info( `Successfully added farmer with farmer_uuid ${ farmer.uuid } and farmer_name ${ farmer.name } to ArcGIS` );
+//             //   // const {objectId, globalId} = addPolygonResult.data.addResults[0];
+//             //
+//             //
+//             //
+//             //   functions.logger.info( `Successfully added farmer with object id ${ objectId } and global id ${ globalId } to Firestore - ${ farmer.uuid }` );
+//             // }
+//           } else {
+//             await saveFeatureLayerDataToFirestoreAndFirebase(farmer);
+//             // const feature = buildPolygonFeatureLayer( farmer );
+//             // functions.logger.info(
+//             //   "this is the feature: ",
+//             //   JSON.stringify(feature)
+//             // );
+//             // // update farmer in firestore
+//             // const result = await updateDataInArcGIS( feature );
+//             // functions.logger.info("this is the result: ", result);
+//             //
+//             // if (result.data.error) {
+//             //   throw new Error(result.data.error.details[0]);
+//             // }
+//             //
+//             // if (
+//             //   result.data.updateResults &&
+//             //     result.data.updateResults[0].success.toString() == "true"
+//             // ) {
+//             //
+//             //   if ( farmer.uuid != null ) {
+//             //
+//             //     await admin.firestore().collection( "farmers" ).doc( farmer.uuid ).update( {...farmer} );
+//             //   }
+//             //
+//             //   functions.logger.info(`Successfully updated farmer with farmer_uuid ${ farmer.uuid } and farmer_name ${ farmer.name } to ArcGIS` );
+//             // }
+//           }
+//         }
+//       } catch (error) {
+//         functions.logger.error(error);
+//         throw (error);
+//       }
+//     }
+//   }
+// };
 
-          const farmerRef = await admin.firestore().collection("farmers").doc(farmer.uuid).get();
-          if (!farmerRef.exists) {
-            await saveFeatureLayerDataToFirestoreAndFirebase(farmer);
-
-            // const addPolygonResult = await addPolygonDataToArcGIS(polygonFeature);
-            // const addPointResult = await addPointDataToArcGIS(pointFeature);
-
-            // functions.logger.info("addPolygonResult", addPolygonResult);
-            // functions.logger.info("addPointResult", addPointResult);
-
-
-            // if (
-            //
-
-            //   addPolygonResult.data.addResults[0].success.toString() == "true" ||
-
-            //     addPointResult.data.addResults[0].success.toString() == "true"
-            // ) {
-            //
-            //   functions.logger.info( `Successfully added farmer with farmer_uuid ${ farmer.uuid } and farmer_name ${ farmer.name } to ArcGIS` );
-            //   // const {objectId, globalId} = addPolygonResult.data.addResults[0];
-            //
-            //
-            //
-            //   functions.logger.info( `Successfully added farmer with object id ${ objectId } and global id ${ globalId } to Firestore - ${ farmer.uuid }` );
-            // }
-          } else {
-            await saveFeatureLayerDataToFirestoreAndFirebase(farmer);
-            // const feature = buildPolygonFeatureLayer( farmer );
-            // functions.logger.info(
-            //   "this is the feature: ",
-            //   JSON.stringify(feature)
-            // );
-            // // update farmer in firestore
-            // const result = await updateDataInArcGIS( feature );
-            // functions.logger.info("this is the result: ", result);
-            //
-            // if (result.data.error) {
-            //   throw new Error(result.data.error.details[0]);
-            // }
-            //
-            // if (
-            //   result.data.updateResults &&
-            //     result.data.updateResults[0].success.toString() == "true"
-            // ) {
-            //
-            //   if ( farmer.uuid != null ) {
-            //
-            //     await admin.firestore().collection( "farmers" ).doc( farmer.uuid ).update( {...farmer} );
-            //   }
-            //
-            //   functions.logger.info(`Successfully updated farmer with farmer_uuid ${ farmer.uuid } and farmer_name ${ farmer.name } to ArcGIS` );
-            // }
-          }
-        }
-      } catch (error) {
-        functions.logger.error(error);
-        throw (error);
-      }
-    }
-  }
-};
-
-const saveFeatureLayerDataToFirestoreAndFirebase = async (farmer: any) => {
-  const polygonFeature = buildPolygonFeatureLayer(farmer);
-  const pointFeature = buildPointFeatureLayer(farmer);
-
-  functions.logger.info("polygonFeature", polygonFeature);
-  functions.logger.info("pointFeature", pointFeature);
-
-  await Promise.all([
-    admin.firestore().collection( "farmers" ).doc( farmer.uuid ).set( {
-      ...farmer,
-      // objectId,
-      // globalId,
-    }),
-    admin.database().ref(`"polygon-feature-layers"/${farmer.uuid}`).set({
-      ...polygonFeature,
-      lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-    }),
-    admin.database().ref(`"point-feature-layers"/${farmer.uuid}`).set({
-      ...pointFeature,
-      lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-    }),
-  ]);
-};
+// const saveFeatureLayerDataToFirestoreAndFirebase = async (farmer: any) => {
+//   const polygonFeature = buildPolygonFeatureLayer(farmer);
+//   const pointFeature = buildPointFeatureLayer(farmer);
+//
+//   functions.logger.info("polygonFeature", polygonFeature);
+//   functions.logger.info("pointFeature", pointFeature);
+//
+//   await Promise.all([
+//     admin.firestore().collection( "farmers" ).doc( farmer.uuid ).set( {
+//       ...farmer,
+//       // objectId,
+//       // globalId,
+//     }),
+//     admin.database().ref(`"polygon-feature-layers"/${farmer.uuid}`).set({
+//       ...polygonFeature,
+//       lastUpdated: Date.now(),
+//     }),
+//     admin.database().ref(`"point-feature-layers"/${farmer.uuid}`).set({
+//       ...pointFeature,
+//       lastUpdated: Date.now(),
+//     }),
+//   ]);
+// };
 
 const saveAllDataToFirebase = async (data: FarmerData[]) => {
   for (const farmer of data) {
     await admin.database().ref(`sasa-raw-data/sasa-data-list/${farmer.uuid}`).set({
       ...farmer,
       dataSynced: false,
-      lastDataSyncEvent: admin.firestore.FieldValue.serverTimestamp(),
+      lastDataSyncEvent: Date.now(),
     });
   }
 };
 
 // main function that will be triggered every day at 04:50 UTC
 
-exports.dailyScheduledFunction = functions.pubsub.schedule("50 4 * * *").onRun(async ( context ) => {
-  // info log the function time start in UTC
-  functions.logger.info( "This will be run every day at 04:50 UTC!" );
-  try {
-    const data: FarmerData[] = await fetchData();
-    await Promise.allSettled([
-      processFarmerData(data),
-      saveAllDataToFirebase(data),
-    ]);
-    // await writeDataToFirebaseStorage( data );
-    // await processFarmerData( data );
-  } catch (error) {
-    functions.logger.error( error );
-  }
-});
+// exports.dailyScheduledFunction = functions.pubsub.schedule("50 4 * * *").onRun(async ( context ) => {
+//   // info log the function time start in UTC
+//   functions.logger.info( "This will be run every day at 04:50 UTC!" );
+//   try {
+//     const data: FarmerData[] = await fetchData();
+//     await Promise.allSettled([
+//       processFarmerData(data),
+//       saveAllDataToFirebase(data),
+//     ]);
+//     // await writeDataToFirebaseStorage( data );
+//     // await processFarmerData( data );
+//   } catch (error) {
+//     functions.logger.error( error );
+//   }
+// });
 
 exports.dailySasaDataSync = functions.pubsub.schedule("50 4 * * *").onRun(async ( context ) => {
   try {
@@ -389,21 +450,30 @@ exports.generateFeatureLayers = functions.pubsub.schedule("every 30 minutes").on
           if (polygonFeature) {
             if (Array.isArray(polygonFeature)) {
               for (const feature of polygonFeature) {
-                await admin.database().ref(`polygon-feature-layers/polygon-layers-list/${farmer.uuid}`).set({
+                // this will need to change slightly because there will only be one record with this uuid (but this should be multiple)
+
+                await admin.database().ref(`polygon-feature-layers/polygon-layers-list/${farmer.uuid}/${feature.attributes.farmer_field_uuid}`).set({
                   ...feature,
                   dataSynced: false,
-                  lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+                  lastUpdated: Date.now(),
                 });
               }
             } else {
               await admin.database().ref(`polygon-feature-layers/polygon-layers-list/${farmer.uuid}`).set({
                 ...polygonFeature,
                 dataSynced: false,
-                lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+                lastUpdated: Date.now(),
               });
             }
+
+            await admin.database().ref("sasa-raw-data/sasa-data-list").child(farmer.uuid).update({
+              dataSynced: true,
+              lastDataSyncEvent: Date.now(),
+            });
+
+            functions.logger.info( "polygon feature layer saved", polygonFeature );
+            functions.logger.info( `farmer ${ farmer.uuid } dataSynced set to true` );
           }
-          functions.logger.info( "polygon feature layer", polygonFeature );
         }
       }
 
@@ -416,7 +486,3 @@ exports.generateFeatureLayers = functions.pubsub.schedule("every 30 minutes").on
   }
 });
 
-exports.deleteSasaDataSchema = functions.https.onRequest(async ( request, response ) => {
-  await admin.database().ref("sasa-raw-data").remove();
-  response.status(200).send("Sasa data schema deleted");
-});

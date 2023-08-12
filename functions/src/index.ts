@@ -107,9 +107,6 @@ const buildPolygonFeatureLayer = (farmer: FarmerData): FeatureLayer | FeatureLay
   if (farmer.fields && farmer.fields.length > 0) {
     if (farmer.fields.length > 1) {
       functions.logger.info("Farmer has more than one field");
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // buildPolygonFeatureLayer()
-
 
       for (const field of farmer.fields) {
         const newFarmer = farmer;
@@ -134,7 +131,7 @@ const buildPolygonFeatureLayer = (farmer: FarmerData): FeatureLayer | FeatureLay
               fieldCoordinateData.push([coordinates.longitude, coordinates.latitude]);
             }
 
-            if (fieldCoordinateData) {
+            if (fieldCoordinateData && fieldCoordinateData.length > 0) {
               if (fieldCoordinateData[0][0] !== fieldCoordinateData[fieldCoordinateData.length - 1][0] && fieldCoordinateData[0][1] !== fieldCoordinateData[fieldCoordinateData.length - 1][1]) {
                 // add to the end of the array to close the polygon
                 fieldCoordinateData.push([fieldCoordinateData[0][0], fieldCoordinateData[0][1]]);
@@ -161,7 +158,7 @@ const buildPolygonFeatureLayer = (farmer: FarmerData): FeatureLayer | FeatureLay
         };
 
         const polygonLayer = {
-          geometry: fieldCoordinateData.length > 0 ? geometry : null,
+          geometry: fieldCoordinateData.length > 1 ? geometry : null,
           attributes,
         };
 
@@ -173,9 +170,11 @@ const buildPolygonFeatureLayer = (farmer: FarmerData): FeatureLayer | FeatureLay
       return featureLayers;
     }
 
+    functions.logger.info("Farmer has one field");
     functions.logger.info("farmer", farmer);
 
     if (Array.isArray(farmer.fields)) {
+      functions.logger.info("farmer.fields is an array: ", farmer.fields);
       const field = farmer.fields[0];
       if (field["map"] && field["map"].length > 0) {
         for (const coordinates of field["map"]) {
@@ -188,39 +187,38 @@ const buildPolygonFeatureLayer = (farmer: FarmerData): FeatureLayer | FeatureLay
 
     functions.logger.info("coordinateData", coordinateData);
 
-    // check if the first and last coordinates are the same
-
-    if (coordinateData) {
+    if (coordinateData && coordinateData.length > 0) {
       if (coordinateData[0][0] !== coordinateData[coordinateData.length - 1][0] && coordinateData[0][1] !== coordinateData[coordinateData.length - 1][1]) {
         // add to the end of the array to close the polygon
         coordinateData.push([coordinateData[0][0], coordinateData[0][1]]);
       }
     }
 
-    functions.logger.info("coordinateData", coordinateData);
+    const geometry = {
+      rings: coordinateData || null,
+      spatialReference: {
+        wkid: 4326,
+      },
+    };
+
+    const attributes = {
+      farmer_uuid: farmer.uuid,
+      farmer_name: farmer.name,
+      farmer_field_uuid: farmer.fields && farmer.fields[0] ? farmer.fields[0].uuid : null,
+      farmer_gender: farmer.demographic.gender? farmer.demographic.gender : null,
+      farmer_identity_type: farmer.demographic.identity_type ? farmer.demographic.identity_type : null,
+      farmer_identity_number: farmer.demographic.identity_number ? farmer.demographic.identity_number : null,
+      farmer_created_at: farmer.created_at || null,
+    };
+
+    functions.logger.info("geometry", geometry);
+    functions.logger.info("attributes", attributes);
+
+    return {
+      geometry: coordinateData.length > 1 ? geometry : null,
+      attributes,
+    };
   }
-
-  const geometry = {
-    rings: coordinateData,
-    spatialReference: {
-      wkid: 4326,
-    },
-  };
-
-  const attributes = {
-    farmer_uuid: farmer.uuid,
-    farmer_name: farmer.name,
-    farmer_field_uuid: farmer.fields && farmer.fields[0] ? farmer.fields[0].uuid : null,
-    farmer_gender: farmer.demographic.gender? farmer.demographic.gender : null,
-    farmer_identity_type: farmer.demographic.identity_type ? farmer.demographic.identity_type : null,
-    farmer_identity_number: farmer.demographic.identity_number ? farmer.demographic.identity_number : null,
-    farmer_created_at: farmer.created_at || null,
-  };
-
-  return {
-    geometry: coordinateData.length > 0 ? geometry : null,
-    attributes,
-  };
 };
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -401,24 +399,6 @@ const saveAllDataToFirebase = async (data: FarmerData[]) => {
     });
   }
 };
-
-// main function that will be triggered every day at 04:50 UTC
-
-// exports.dailyScheduledFunction = functions.pubsub.schedule("50 4 * * *").onRun(async ( context ) => {
-//   // info log the function time start in UTC
-//   functions.logger.info( "This will be run every day at 04:50 UTC!" );
-//   try {
-//     const data: FarmerData[] = await fetchData();
-//     await Promise.allSettled([
-//       processFarmerData(data),
-//       saveAllDataToFirebase(data),
-//     ]);
-//     // await writeDataToFirebaseStorage( data );
-//     // await processFarmerData( data );
-//   } catch (error) {
-//     functions.logger.error( error );
-//   }
-// });
 
 exports.dailySasaDataSync = functions.pubsub.schedule("50 4 * * *").onRun(async ( context ) => {
   try {

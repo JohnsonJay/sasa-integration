@@ -104,83 +104,87 @@ const buildPolygonFeatureLayer = (farmer: FarmerData): FeatureLayer | FeatureLay
 
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
   // @ts-ignore
-  if (farmer.fields && farmer.fields.length > 0) {
-    if (farmer.fields.length > 1) {
-      functions.logger.info("Farmer has more than one field");
+  if (farmer) {
+    if (farmer.fields) {
+      if (farmer.fields.length > 1) {
+        functions.logger.info("Farmer has more than one field");
 
-      for (const field of farmer.fields) {
-        const newFarmer = farmer;
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
-        const fieldCoordinateData: [Location[]] = [];
+        for (const field of farmer.fields) {
+          const newFarmer = farmer;
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // @ts-ignore
+          const fieldCoordinateData: [Location[]] = [];
 
-        newFarmer.fields = [field];
-        functions.logger.info("newFarmer", newFarmer);
-        functions.logger.info("newFarmer.fields", newFarmer.fields);
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
-        // build polygon layer here
+          newFarmer.fields = [field];
+          functions.logger.info("newFarmer", newFarmer);
+          functions.logger.info("newFarmer.fields", newFarmer.fields);
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // @ts-ignore
+          // build polygon layer here
 
-        if (Array.isArray(farmer.fields)) {
-          const field = farmer.fields[0];
+          if (Array.isArray(farmer.fields)) {
+            const field = farmer.fields[0];
 
-          if (field["map"] && field["map"].length > 0) {
-            for (const coordinates of field["map"]) {
-              // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-              // @ts-ignore
-              fieldCoordinateData.push([coordinates.longitude, coordinates.latitude]);
-            }
+            if (field["map"] && field["map"].length > 0) {
+              for (const coordinates of field["map"]) {
+                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                // @ts-ignore
+                fieldCoordinateData.push([coordinates.longitude, coordinates.latitude]);
+              }
 
-            if (fieldCoordinateData && fieldCoordinateData.length > 0) {
-              if (fieldCoordinateData[0][0] !== fieldCoordinateData[fieldCoordinateData.length - 1][0] && fieldCoordinateData[0][1] !== fieldCoordinateData[fieldCoordinateData.length - 1][1]) {
-                // add to the end of the array to close the polygon
-                fieldCoordinateData.push([fieldCoordinateData[0][0], fieldCoordinateData[0][1]]);
+              if (fieldCoordinateData && fieldCoordinateData.length > 0) {
+                if (fieldCoordinateData[0][0] !== fieldCoordinateData[fieldCoordinateData.length - 1][0] && fieldCoordinateData[0][1] !== fieldCoordinateData[fieldCoordinateData.length - 1][1]) {
+                  // add to the end of the array to close the polygon
+                  fieldCoordinateData.push([fieldCoordinateData[0][0], fieldCoordinateData[0][1]]);
+                }
               }
             }
           }
+
+          const geometry = {
+            rings: fieldCoordinateData,
+            spatialReference: {
+              wkid: 4326,
+            },
+          };
+
+          const attributes = {
+            farmer_uuid: newFarmer.uuid,
+            farmer_name: newFarmer.name,
+            farmer_field_uuid: newFarmer.fields && newFarmer.fields[0] ? newFarmer.fields[0].uuid : null,
+            farmer_gender: newFarmer.demographic.gender? newFarmer.demographic.gender : null,
+            farmer_identity_type: newFarmer.demographic.identity_type ? newFarmer.demographic.identity_type : null,
+            farmer_identity_number: newFarmer.demographic.identity_number ? newFarmer.demographic.identity_number : null,
+            farmer_created_at: newFarmer.created_at || null,
+          };
+
+          const polygonLayer = {
+            geometry: fieldCoordinateData.length > 1 ? geometry : null,
+            attributes,
+          };
+
+          featureLayers.push(polygonLayer);
         }
 
-        const geometry = {
-          rings: fieldCoordinateData,
-          spatialReference: {
-            wkid: 4326,
-          },
-        };
+        functions.logger.info("featureLayers", featureLayers);
 
-        const attributes = {
-          farmer_uuid: newFarmer.uuid,
-          farmer_name: newFarmer.name,
-          farmer_field_uuid: newFarmer.fields && newFarmer.fields[0] ? newFarmer.fields[0].uuid : null,
-          farmer_gender: newFarmer.demographic.gender? newFarmer.demographic.gender : null,
-          farmer_identity_type: newFarmer.demographic.identity_type ? newFarmer.demographic.identity_type : null,
-          farmer_identity_number: newFarmer.demographic.identity_number ? newFarmer.demographic.identity_number : null,
-          farmer_created_at: newFarmer.created_at || null,
-        };
-
-        const polygonLayer = {
-          geometry: fieldCoordinateData.length > 1 ? geometry : null,
-          attributes,
-        };
-
-        featureLayers.push(polygonLayer);
+        return featureLayers;
       }
-
-      functions.logger.info("featureLayers", featureLayers);
-
-      return featureLayers;
     }
 
     functions.logger.info("Farmer has one field");
     functions.logger.info("farmer", farmer);
 
-    if (Array.isArray(farmer.fields)) {
-      functions.logger.info("farmer.fields is an array: ", farmer.fields);
-      const field = farmer.fields[0];
-      if (field["map"] && field["map"].length > 0) {
-        for (const coordinates of field["map"]) {
-          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-          // @ts-ignore
-          coordinateData.push([coordinates.longitude, coordinates.latitude]);
+    if (farmer.fields) {
+      if (Array.isArray(farmer.fields)) {
+        functions.logger.info("farmer.fields is an array: ", farmer.fields);
+        const field = farmer.fields[0];
+        if (field["map"] && field["map"].length > 0) {
+          for (const coordinates of field["map"]) {
+            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+            // @ts-ignore
+            coordinateData.push([coordinates.longitude, coordinates.latitude]);
+          }
         }
       }
     }
@@ -394,8 +398,10 @@ const saveAllDataToFirebase = async (data: FarmerData[]) => {
   for (const farmer of data) {
     await admin.database().ref(`sasa-raw-data/sasa-data-list/${farmer.uuid}`).set({
       ...farmer,
-      dataSynced: false,
-      lastDataSyncEvent: Date.now(),
+      polygonFeatureDataSynced: false,
+      pointFeatureDataSynced: false,
+      lastPolygonDataSyncEvent: Date.now(),
+      lastPointDataSyncEvent: Date.now(),
     });
   }
 };
@@ -409,60 +415,71 @@ exports.dailySasaDataSync = functions.pubsub.schedule("50 4 * * *").onRun(async 
   }
 });
 
-exports.generateFeatureLayers = functions.pubsub.schedule("every 30 minutes").onRun(async ( context ) => {
+exports.generatePolygonFeatureLayers = functions.pubsub.schedule("every 30 minutes").onRun(async ( context ) => {
   try {
     // retrieve 5 records from firebase db where dataSynced is false
     const sasaDataListRef = admin.database().ref("/sasa-raw-data");
-    await sasaDataListRef.child("sasa-data-list").orderByChild("dataSynced").equalTo(false).limitToFirst(5).once( "value", async ( snapshot ) => {
-      const availableData = snapshot.val();
-      if (!availableData) {
-        functions.logger.info( "No data to process" );
-        return;
-      }
+    const snapshot = await sasaDataListRef.child("sasa-data-list").orderByChild("polygonFeatureDataSynced").equalTo(false).limitToFirst(5).once( "value");
+    const availableData = snapshot.val();
+    if (!availableData) {
+      functions.logger.info( "No data to process" );
+      return;
+    }
 
-      // iterate through availableData
-      for (const key in availableData) {
-        // eslint-disable-next-line no-prototype-builtins
-        if (availableData.hasOwnProperty(key)) {
-          const farmer = availableData[key];
-          // build polygon feature layer
-          const polygonFeature = buildPolygonFeatureLayer(farmer);
-          if (polygonFeature) {
-            if (Array.isArray(polygonFeature)) {
-              for (const feature of polygonFeature) {
-                // this will need to change slightly because there will only be one record with this uuid (but this should be multiple)
+    functions.logger.info( "Available data to process", availableData);
 
-                await admin.database().ref(`polygon-feature-layers/polygon-layers-list/${farmer.uuid}/${feature.attributes.farmer_field_uuid}`).set({
-                  ...feature,
-                  dataSynced: false,
-                  lastUpdated: Date.now(),
-                });
-              }
-            } else {
-              await admin.database().ref(`polygon-feature-layers/polygon-layers-list/${farmer.uuid}`).set({
-                ...polygonFeature,
-                dataSynced: false,
+    // iterate through availableData
+    // eslint-disable-next-line guard-for-in
+    for (const key in availableData) {
+      // eslint-disable-next-line no-prototype-builtins
+      if (availableData.hasOwnProperty(key)) {
+        const farmer = availableData[key];
+        // build polygon feature layer
+        const polygonFeature = buildPolygonFeatureLayer(farmer);
+        if (polygonFeature) {
+          if (Array.isArray(polygonFeature)) {
+            for (const feature of polygonFeature) {
+              // this will need to change slightly because there will only be one record with this uuid (but this should be multiple)
+
+              await admin.database().ref(`polygon-feature-layers/polygon-layers-list/${farmer.uuid}/${feature.attributes.farmer_field_uuid}`).set({
+                ...feature,
+                featureLayerCreated: false,
                 lastUpdated: Date.now(),
               });
             }
-
-            await admin.database().ref("sasa-raw-data/sasa-data-list").child(farmer.uuid).update({
-              dataSynced: true,
-              lastDataSyncEvent: Date.now(),
+          } else {
+            await admin.database().ref(`polygon-feature-layers/polygon-layers-list/${farmer.uuid}`).set({
+              ...polygonFeature,
+              dataSynced: false,
+              lastUpdated: Date.now(),
             });
-
-            functions.logger.info( "polygon feature layer saved", polygonFeature );
-            functions.logger.info( `farmer ${ farmer.uuid } dataSynced set to true` );
           }
+
+          await admin.database().ref("sasa-raw-data/sasa-data-list").child(farmer.uuid).update({
+            polygonFeatureDataSynced: true,
+            lastPolygonDataSyncEvent: Date.now(),
+          });
+
+          functions.logger.info( "polygon feature layer saved", polygonFeature );
+          functions.logger.info( `farmer ${ farmer.uuid } dataSynced set to true` );
         }
       }
-
-      functions.logger.info( "Available data to process", availableData);
-    }, ( error ) => {
-      functions.logger.error( error );
-    });
+    }
   } catch (error) {
     functions.logger.error(error);
   }
 });
 
+/* exports.generatePointFeatureLayers = functions.pubsub.schedule("every 30 minutes").onRun(async ( context ) => {
+  try {
+    const sasaDataListRef = admin.database().ref("/sasa-raw-data");
+    const snapshot = await sasaDataListRef.child("sasa-data-list").orderByChild("pointFeatureDataSynced").equalTo(false).limitToFirst(5).once( "value");
+    const availableData = snapshot.val();
+    if (!availableData) {
+      functions.logger.info( "No data to process" );
+      return;
+    }
+  } catch (error) {
+    functions.logger.error(error);
+  }
+});*/

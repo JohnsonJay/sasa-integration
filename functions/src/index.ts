@@ -5,7 +5,7 @@ import {FarmerData, FeatureLayer, Location} from "./interfaces";
 
 admin.initializeApp();
 
-// const POLYGON_FEATURE_SERVICE = "https://services-eu1.arcgis.com/gq4tFiP3X79azbdV/arcgis/rest/services/Farm_Land_Layer/FeatureServer/0";
+const POLYGON_FEATURE_SERVICE = "https://services-eu1.arcgis.com/gq4tFiP3X79azbdV/arcgis/rest/services/Farm_Land_Layer/FeatureServer/0";
 // const POINT_LAYER_FEATURE_SERVICE = "https://services-eu1.arcgis.com/gq4tFiP3X79azbdV/arcgis/rest/services/farmer_assessment_layer/FeatureServer/0";
 
 /**
@@ -225,31 +225,29 @@ const buildPolygonFeatureLayer = (farmer: FarmerData): FeatureLayer | FeatureLay
   }
 };
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-// const addPolygonDataToArcGIS = async (data: any) => {
-//
-//   const url = `${POLYGON_FEATURE_SERVICE}/addFeatures?f=json`;
-//   const config = {
-//     headers: {
-//       "Content-Type": "application/x-www-form-urlencoded",
-//       "Accept": "application/json",
-//     },
-//   };
-//
-//   const formData = {
-//     "features": JSON.stringify(data),
-//   };
-//
-//
-//   try {
-//     const result = await axios.post(url, formData, config);
-//     functions.logger.info(result);
-//     return result;
-//   } catch (error) {
-//     functions.logger.error(error);
-//     throw (error);
-//   }
-// };
+const addPolygonDataToArcGIS = async (data: any) => {
+  const url = `${POLYGON_FEATURE_SERVICE}/addFeatures?f=json`;
+  const config = {
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "Accept": "application/json",
+    },
+  };
+
+  const formData = {
+    "features": JSON.stringify(data),
+  };
+
+
+  try {
+    const result = await axios.post(url, formData, config);
+    functions.logger.info(result);
+    return result;
+  } catch (error) {
+    functions.logger.error(error);
+    throw (error);
+  }
+};
 //
 // const addPointDataToArcGIS = async (data: any) => {
 //
@@ -419,7 +417,7 @@ exports.generatePolygonFeatureLayers = functions.pubsub.schedule("every 30 minut
   try {
     // retrieve 5 records from firebase db where dataSynced is false
     const sasaDataListRef = admin.database().ref("/sasa-raw-data");
-    const snapshot = await sasaDataListRef.child("sasa-data-list").orderByChild("polygonFeatureDataSynced").equalTo(false).limitToFirst(5).once( "value");
+    const snapshot = await sasaDataListRef.child("sasa-data-list").orderByChild("polygonFeatureDataSynced").equalTo(false).limitToFirst(15).once( "value");
     const availableData = snapshot.val();
     if (!availableData) {
       functions.logger.info( "No data to process" );
@@ -450,7 +448,7 @@ exports.generatePolygonFeatureLayers = functions.pubsub.schedule("every 30 minut
           } else {
             await admin.database().ref(`polygon-feature-layers/polygon-layers-list/${farmer.uuid}`).set({
               ...polygonFeature,
-              dataSynced: false,
+              featureLayerCreated: false,
               lastUpdated: Date.now(),
             });
           }
@@ -468,6 +466,61 @@ exports.generatePolygonFeatureLayers = functions.pubsub.schedule("every 30 minut
   } catch (error) {
     functions.logger.error(error);
   }
+});
+
+exports.sendPolygonFeatureLayersToArcGIS = functions.pubsub.schedule("every 30 minutes").onRun(async ( context ) => {
+  const sasaDataListRef = admin.database().ref("/polygon-feature-layers");
+  const snapshot = await sasaDataListRef.child("polygon-layers-list").orderByChild("featureLayerCreated").equalTo(false).limitToFirst(5).once( "value");
+  const availableData = snapshot.val();
+
+  const features = [];
+
+  if (!availableData) {
+    functions.logger.info( "No data to process" );
+    return;
+  }
+
+  for (const key in availableData) {
+    // eslint-disable-next-line no-prototype-builtins
+    if (availableData.hasOwnProperty(key)) {
+      const polygonFeature = availableData[key];
+      // build polygon feature layer
+      if (Array.isArray(polygonFeature)) {
+        // this is an array of feature layers
+        // meaning there are multiple fields for this farmer
+        functions.logger.info("polygonFeature is an array of feature layers");
+        for (const feature of polygonFeature) {
+          if (!feature.geometry) {
+            functions.logger.info("No geometry to process");
+            continue;
+          }
+
+          const featureLayer = {
+            geometry: feature.geometry,
+            attributes: feature.attributes,
+          };
+
+          features.push(featureLayer);
+        }
+      } else {
+        // this is a single feature layer
+        if (!polygonFeature.geometry) {
+          functions.logger.info("No geometry to process");
+          continue;
+        }
+
+        const featureLayer = {
+          geometry: polygonFeature.geometry,
+          attributes: polygonFeature.attributes,
+        };
+
+        features.push(featureLayer);
+      }
+    }
+  }
+
+  const result = await addPolygonDataToArcGIS(features);
+  functions.logger.info("addPolygonDataToArcGIS result: ", result);
 });
 
 /* exports.generatePointFeatureLayers = functions.pubsub.schedule("every 30 minutes").onRun(async ( context ) => {

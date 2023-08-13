@@ -519,6 +519,16 @@ exports.sendPolygonFeatureLayersToArcGIS = functions.pubsub.schedule("every 30 m
     }
   }
 
+  if (!features.length) {
+    functions.logger.info("No features to process");
+    return;
+  }
+
+  if (features.length !> 0) {
+    functions.logger.info("features.length !> 0");
+    return;
+  }
+
   const result = await addPolygonDataToArcGIS(features);
   functions.logger.info("addPolygonDataToArcGIS result: ", result);
 });

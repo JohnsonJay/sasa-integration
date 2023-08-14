@@ -469,8 +469,8 @@ exports.generatePolygonFeatureLayers = functions.pubsub.schedule("every 30 minut
 });
 
 exports.sendPolygonFeatureLayersToArcGIS = functions.pubsub.schedule("every 30 minutes").onRun(async ( context ) => {
-  const sasaDataListRef = admin.database().ref("/polygon-feature-layers");
-  const snapshot = await sasaDataListRef.child("polygon-layers-list").orderByChild("featureLayerCreated").equalTo(false).limitToFirst(5).once( "value");
+  const polygonFeatureRef = admin.database().ref("/polygon-feature-layers");
+  const snapshot = await polygonFeatureRef.child("polygon-layers-list").orderByChild("featureLayerCreated").equalTo(false).limitToFirst(5).once( "value");
   const availableData = snapshot.val();
 
   const features = [];
@@ -485,27 +485,53 @@ exports.sendPolygonFeatureLayersToArcGIS = functions.pubsub.schedule("every 30 m
     if (availableData.hasOwnProperty(key)) {
       const polygonFeature = availableData[key];
       // build polygon feature layer
+      functions.logger.info("polygonFeature", polygonFeature);
       if (Array.isArray(polygonFeature)) {
+        functions.logger.info("polygonFeature is an array of feature layers");
         // this is an array of feature layers
         // meaning there are multiple fields for this farmer
         functions.logger.info("polygonFeature is an array of feature layers");
-        for (const feature of polygonFeature) {
-          if (!feature.geometry) {
-            functions.logger.info("No geometry to process");
-            continue;
+        // eslint-disable-next-line guard-for-in
+        for (const childKey in polygonFeature) {
+          functions.logger.info("key", key);
+          functions.logger.info("childKey", childKey);
+          // eslint-disable-next-line no-prototype-builtins
+          if (polygonFeature.hasOwnProperty(childKey)) {
+            const feature = polygonFeature[childKey];
+            if (!feature.geometry) {
+              functions.logger.info("No geometry to process");
+              await admin.database().ref(`polygon-feature-layers/polygon-layers-list/${key}`).child(childKey).update({
+                featureLayerCreated: true,
+                isGeometryEmpty: true,
+                reasonFailure: "No geometry to process",
+                lastUpdated: Date.now(),
+              });
+              continue;
+            }
+
+            const featureLayer = {
+              geometry: feature.geometry,
+              attributes: feature.attributes,
+            };
+
+            features.push(featureLayer);
+
+            await admin.database().ref(`polygon-feature-layers/polygon-layers-list/${key}`).child(childKey).update({
+              featureLayerCreated: true,
+              lastUpdated: Date.now(),
+            });
           }
-
-          const featureLayer = {
-            geometry: feature.geometry,
-            attributes: feature.attributes,
-          };
-
-          features.push(featureLayer);
         }
       } else {
         // this is a single feature layer
         if (!polygonFeature.geometry) {
           functions.logger.info("No geometry to process");
+          await admin.database().ref("polygon-feature-layers/polygon-layers-list").child(key).update({
+            featureLayerCreated: true,
+            isGeometryEmpty: true,
+            reasonFailure: "No geometry to process",
+            lastUpdated: Date.now(),
+          });
           continue;
         }
 
@@ -515,17 +541,17 @@ exports.sendPolygonFeatureLayersToArcGIS = functions.pubsub.schedule("every 30 m
         };
 
         features.push(featureLayer);
+
+        await admin.database().ref("polygon-feature-layers/polygon-layers-list").child(key).update({
+          featureLayerCreated: true,
+          lastUpdated: Date.now(),
+        });
       }
     }
   }
 
-  if (!features.length) {
+  if (features.length < 1) {
     functions.logger.info("No features to process");
-    return;
-  }
-
-  if (features.length !> 0) {
-    functions.logger.info("features.length !> 0");
     return;
   }
 

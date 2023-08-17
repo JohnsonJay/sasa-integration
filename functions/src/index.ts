@@ -5,7 +5,7 @@ import {FarmerData, FeatureLayer, Location} from "./interfaces";
 
 admin.initializeApp();
 
-const POLYGON_FEATURE_SERVICE = "https://services-eu1.arcgis.com/gq4tFiP3X79azbdV/arcgis/rest/services/Farm_Land_Layer/FeatureServer/0";
+const POLYGON_FEATURE_SERVICE = "https://services-eu1.arcgis.com/gq4tFiP3X79azbdV/arcgis/rest/services/Farmer_Field_Data_Layer/FeatureServer/0";
 // const POINT_LAYER_FEATURE_SERVICE = "https://services-eu1.arcgis.com/gq4tFiP3X79azbdV/arcgis/rest/services/farmer_assessment_layer/FeatureServer/0";
 
 /**
@@ -96,7 +96,18 @@ const buildPointFeatureLayer = (farmer: FarmerData) => {
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-const buildPolygonFeatureLayer = (farmer: FarmerData): FeatureLayer | FeatureLayer[] => {
+const buildPolygonFeatureLayer = (farmer: FarmerData): {
+  geometry: { rings: [ Location[] ][] | null; spatialReference: { wkid: number } } | null;
+  attributes: {
+    farmer_created_at: string | null;
+    farmer_gender: string | null;
+    farmer_identity_type: string | null;
+    farmer_field_uuid: string | null;
+    farmer_uuid: string | null | undefined;
+    farmer_identity_number: string | null;
+    farmer_name: string | null | undefined
+  }
+} => {
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
   // @ts-ignore
   const coordinateData: [Location[]] = [];
@@ -142,7 +153,7 @@ const buildPolygonFeatureLayer = (farmer: FarmerData): FeatureLayer | FeatureLay
           }
 
           const geometry = {
-            rings: fieldCoordinateData,
+            rings: [fieldCoordinateData],
             spatialReference: {
               wkid: 4326,
             },
@@ -199,7 +210,7 @@ const buildPolygonFeatureLayer = (farmer: FarmerData): FeatureLayer | FeatureLay
     }
 
     const geometry = {
-      rings: coordinateData || null,
+      rings: [coordinateData] || null,
       spatialReference: {
         wkid: 4326,
       },
@@ -439,7 +450,7 @@ exports.generatePolygonFeatureLayers = functions.pubsub.schedule("every 30 minut
             for (const feature of polygonFeature) {
               // this will need to change slightly because there will only be one record with this uuid (but this should be multiple)
 
-              await admin.database().ref(`polygon-feature-layers/polygon-layers-list/${farmer.uuid}/${feature.attributes.farmer_field_uuid}`).set({
+              await admin.database().ref(`polygon-feature-layers/polygon-layers-list/${feature.attributes.farmer_field_uuid}`).set({
                 ...feature,
                 featureLayerCreated: false,
                 lastUpdated: Date.now(),
@@ -486,67 +497,29 @@ exports.sendPolygonFeatureLayersToArcGIS = functions.pubsub.schedule("every 30 m
       const polygonFeature = availableData[key];
       // build polygon feature layer
       functions.logger.info("polygonFeature", polygonFeature);
-      if (Array.isArray(polygonFeature)) {
-        functions.logger.info("polygonFeature is an array of feature layers");
-        // this is an array of feature layers
-        // meaning there are multiple fields for this farmer
-        functions.logger.info("polygonFeature is an array of feature layers");
-        // eslint-disable-next-line guard-for-in
-        for (const childKey in polygonFeature) {
-          functions.logger.info("key", key);
-          functions.logger.info("childKey", childKey);
-          // eslint-disable-next-line no-prototype-builtins
-          if (polygonFeature.hasOwnProperty(childKey)) {
-            const feature = polygonFeature[childKey];
-            if (!feature.geometry) {
-              functions.logger.info("No geometry to process");
-              await admin.database().ref(`polygon-feature-layers/polygon-layers-list/${key}`).child(childKey).update({
-                featureLayerCreated: true,
-                isGeometryEmpty: true,
-                reasonFailure: "No geometry to process",
-                lastUpdated: Date.now(),
-              });
-              continue;
-            }
-
-            const featureLayer = {
-              geometry: feature.geometry,
-              attributes: feature.attributes,
-            };
-
-            features.push(featureLayer);
-
-            await admin.database().ref(`polygon-feature-layers/polygon-layers-list/${key}`).child(childKey).update({
-              featureLayerCreated: true,
-              lastUpdated: Date.now(),
-            });
-          }
-        }
-      } else {
-        // this is a single feature layer
-        if (!polygonFeature.geometry) {
-          functions.logger.info("No geometry to process");
-          await admin.database().ref("polygon-feature-layers/polygon-layers-list").child(key).update({
-            featureLayerCreated: true,
-            isGeometryEmpty: true,
-            reasonFailure: "No geometry to process",
-            lastUpdated: Date.now(),
-          });
-          continue;
-        }
-
-        const featureLayer = {
-          geometry: polygonFeature.geometry,
-          attributes: polygonFeature.attributes,
-        };
-
-        features.push(featureLayer);
-
+      // this is a single feature layer
+      if (!polygonFeature.geometry) {
+        functions.logger.info("No geometry to process");
         await admin.database().ref("polygon-feature-layers/polygon-layers-list").child(key).update({
           featureLayerCreated: true,
+          isGeometryEmpty: true,
+          reasonFailure: "No geometry to process",
           lastUpdated: Date.now(),
         });
+        continue;
       }
+
+      const featureLayer = {
+        geometry: polygonFeature.geometry,
+        attributes: polygonFeature.attributes,
+      };
+
+      features.push(featureLayer);
+
+      await admin.database().ref("polygon-feature-layers/polygon-layers-list").child(key).update({
+        featureLayerCreated: true,
+        lastUpdated: Date.now(),
+      });
     }
   }
 
@@ -557,6 +530,43 @@ exports.sendPolygonFeatureLayersToArcGIS = functions.pubsub.schedule("every 30 m
 
   const result = await addPolygonDataToArcGIS(features);
   functions.logger.info("addPolygonDataToArcGIS result: ", result);
+});
+
+exports.manualSendPolygonFeatureLayersToArcGIS = functions.https.onRequest(async ( req, res ) => {
+  const uuid = req.query.uuid;
+  if (uuid && typeof uuid === "string") {
+    const polygonFeatureRef = admin.database().ref("/polygon-feature-layers");
+    const snapshot = await polygonFeatureRef.child("polygon-layers-list").child(uuid).once( "value");
+    const availableData = snapshot.val();
+
+    const features = [];
+
+    if (!availableData) {
+      functions.logger.info( "No data to process" );
+      res.send("No data to process");
+    }
+
+    const polygonFeature = {
+      attributes: availableData.attributes,
+      geometry: availableData.geometry,
+    };
+
+    features.push(polygonFeature);
+
+    functions.logger.info(polygonFeature);
+    functions.logger.info("features", features);
+
+    // send data to arcgis
+    const result = await addPolygonDataToArcGIS(features);
+
+    await admin.database().ref("polygon-feature-layers/polygon-layers-list").child(uuid).update({
+      featureLayerCreated: true,
+      lastUpdated: Date.now(),
+    });
+    functions.logger.info("addPolygonDataToArcGIS result: ", result.data);
+  }
+
+  res.send("No uuid provided");
 });
 
 /* exports.generatePointFeatureLayers = functions.pubsub.schedule("every 30 minutes").onRun(async ( context ) => {

@@ -6,7 +6,7 @@ import {FarmerData, FeatureLayer, Location} from "./interfaces";
 admin.initializeApp();
 
 const POLYGON_FEATURE_SERVICE = "https://services-eu1.arcgis.com/gq4tFiP3X79azbdV/arcgis/rest/services/Farmer_Field_Data_Layer/FeatureServer/0";
-// const POINT_LAYER_FEATURE_SERVICE = "https://services-eu1.arcgis.com/gq4tFiP3X79azbdV/arcgis/rest/services/farmer_assessment_layer/FeatureServer/0";
+const POINT_LAYER_FEATURE_SERVICE = "https://services-eu1.arcgis.com/gq4tFiP3X79azbdV/arcgis/rest/services/Farmer_Demographic_Layer/FeatureServer/0";
 
 /**
  * Fetches data from the SASA API and returns the output
@@ -65,8 +65,8 @@ const fetchData = async () => {
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
 const buildPointFeatureLayer = (farmer: FarmerData) => {
-  if (farmer.demographic.home_location) {
-    const location = farmer.demographic.home_location;
+  if (farmer.demographic.location) {
+    const location = farmer.demographic.location;
 
     const geometry = {
       x: location.longitude,
@@ -83,14 +83,12 @@ const buildPointFeatureLayer = (farmer: FarmerData) => {
       identity_type: farmer.demographic.identity_type,
       identity_number: farmer.demographic.identity_number,
       farmer_age: farmer.demographic.age,
-      created_at: farmer.created_at,
-      updated_at: farmer.updated_at,
     };
 
-    return [
+    return {
       geometry,
       attributes,
-    ];
+    };
   }
 };
 
@@ -238,6 +236,30 @@ const buildPolygonFeatureLayer = (farmer: FarmerData): {
 
 const addPolygonDataToArcGIS = async (data: any) => {
   const url = `${POLYGON_FEATURE_SERVICE}/addFeatures?f=json`;
+  const config = {
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "Accept": "application/json",
+    },
+  };
+
+  const formData = {
+    "features": JSON.stringify(data),
+  };
+
+
+  try {
+    const result = await axios.post(url, formData, config);
+    functions.logger.info(result);
+    return result;
+  } catch (error) {
+    functions.logger.error(error);
+    throw (error);
+  }
+};
+
+const addPointDataToArcGIS = async (data: any) => {
+  const url = `${POINT_LAYER_FEATURE_SERVICE}/addFeatures?f=json`;
   const config = {
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -424,6 +446,8 @@ exports.dailySasaDataSync = functions.pubsub.schedule("50 4 * * *").onRun(async 
   }
 });
 
+// Generate polygon feature layers
+
 exports.generatePolygonFeatureLayers = functions.pubsub.schedule("every 30 minutes").onRun(async ( context ) => {
   try {
     // retrieve 5 records from firebase db where dataSynced is false
@@ -530,6 +554,106 @@ exports.sendPolygonFeatureLayersToArcGIS = functions.pubsub.schedule("every 30 m
 
   const result = await addPolygonDataToArcGIS(features);
   functions.logger.info("addPolygonDataToArcGIS result: ", result);
+});
+
+// Generate point feature layers
+
+exports.generatePointFeatureLayers = functions.pubsub.schedule("every 30 minutes").onRun(async ( context ) => {
+  try {
+    // retrieve 5 records from firebase db where dataSynced is false
+    const sasaDataListRef = admin.database().ref("/sasa-raw-data");
+    const snapshot = await sasaDataListRef.child("sasa-data-list").orderByChild("pointFeatureDataSynced").equalTo(false).limitToFirst(15).once( "value");
+    const availableData = snapshot.val();
+
+    if (!availableData) {
+      functions.logger.info( "No data to process" );
+      return;
+    }
+
+    for (const key in availableData) {
+      // eslint-disable-next-line no-prototype-builtins
+      if (availableData.hasOwnProperty(key)) {
+        const farmer = availableData[key];
+        // build point feature layer
+        const pointFeature = buildPointFeatureLayer(farmer);
+        if (pointFeature) {
+          await admin.database().ref(`point-feature-layers/point-layers-list/${farmer.uuid}`).set({
+            ...pointFeature,
+            featureLayerCreated: false,
+            lastUpdated: Date.now(),
+          });
+
+          await admin.database().ref("sasa-raw-data/sasa-data-list").child(farmer.uuid).update({
+            pointFeatureDataSynced: true,
+            lastPointDataSyncEvent: Date.now(),
+          });
+
+          functions.logger.info( "point feature layer saved", pointFeature );
+          functions.logger.info( `farmer ${ farmer.uuid } dataSynced set to true` );
+        }
+      }
+    }
+
+    functions.logger.info( "Available data to process", availableData);
+  } catch (error) {
+    functions.logger.error(error);
+  }
+});
+
+exports.sendPointFeatureLayersToArcGIS = functions.pubsub.schedule("every 30 minutes").onRun(async ( context ) => {
+  try {
+    const polygonFeatureRef = admin.database().ref("/point-feature-layers");
+    const snapshot = await polygonFeatureRef.child("point-layers-list").orderByChild("featureLayerCreated").equalTo(false).limitToFirst(5).once( "value");
+    const availableData = snapshot.val();
+
+    const features = [];
+
+    if (!availableData) {
+      functions.logger.info( "No data to process" );
+      return;
+    }
+
+    for (const key in availableData) {
+      // eslint-disable-next-line no-prototype-builtins
+      if (availableData.hasOwnProperty(key)) {
+        const pointFeature = availableData[key];
+        // build polygon feature layer
+        functions.logger.info("pointFeature", pointFeature);
+        // this is a single feature layer
+        if (!pointFeature.geometry) {
+          functions.logger.info("No point data to process");
+          await admin.database().ref("point-feature-layers/point-layers-list").child(key).update({
+            featureLayerCreated: true,
+            isLocationEmpty: true,
+            reasonFailure: "No location to process",
+            lastUpdated: Date.now(),
+          });
+          continue;
+        }
+
+        const featureLayer = {
+          geometry: pointFeature.geometry,
+          attributes: pointFeature.attributes,
+        };
+
+        features.push(featureLayer);
+
+        await addPointDataToArcGIS(features);
+
+        await admin.database().ref("point-feature-layers/point-layers-list").child(key).update({
+          featureLayerCreated: true,
+          lastUpdated: Date.now(),
+        });
+      }
+    }
+
+    if (features.length < 1) {
+      functions.logger.info("No features to process");
+      return;
+    }
+  } catch (error) {
+    functions.logger.error(error);
+  }
 });
 
 exports.manualSendPolygonFeatureLayersToArcGIS = functions.https.onRequest(async ( req, res ) => {

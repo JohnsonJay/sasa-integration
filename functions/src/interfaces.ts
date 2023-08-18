@@ -43,7 +43,7 @@ export interface FarmerData {
 
 export interface FeatureLayer {
     geometry?: {
-        rings: [Location[]],
+        rings: [[Location[]]],
         spatialReference: {
             wkid: number,
         },

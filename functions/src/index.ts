@@ -8,9 +8,6 @@ admin.initializeApp();
 const POLYGON_FEATURE_SERVICE = "https://services-eu1.arcgis.com/gq4tFiP3X79azbdV/arcgis/rest/services/Farmer_Field_Data_Layer/FeatureServer/0";
 const POINT_LAYER_FEATURE_SERVICE = "https://services-eu1.arcgis.com/gq4tFiP3X79azbdV/arcgis/rest/services/Farmer_Demographic_Layer/FeatureServer/0";
 
-/**
- * Fetches data from the SASA API and returns the output
- * */
 const fetchData = async () => {
   const url = "https://api.sasa.solutions/api/eco_bw/farmers";
   const endDate = new Date(); // Current timestamp
@@ -40,27 +37,6 @@ const fetchData = async () => {
     throw error;
   }
 };
-
-// const writeDataToFirebaseStorage = (data: any) => {
-//   // write data to firebase storage
-//   const bucket = admin.storage().bucket();
-//   const file = bucket.file("farmers.json");
-//
-//   // const stringifiedData = JSON.stringify(data);
-//   const buffer = Buffer.from(data, "utf8");
-//
-//   file.save(buffer, {
-//     gzip: true,
-//     metadata: {
-//       cacheControl: "public, max-age=31536000",
-//       contentType: "application/json",
-//     },
-//   }).then(() => {
-//     functions.logger.info("File written successfully");
-//   }).catch((error) => {
-//     functions.logger.error("Error writing file:", error);
-//   });
-// };
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
@@ -281,149 +257,6 @@ const addPointDataToArcGIS = async (data: any) => {
     throw (error);
   }
 };
-//
-// const addPointDataToArcGIS = async (data: any) => {
-//
-//   const url = `${POINT_LAYER_FEATURE_SERVICE}/addFeatures?f=json`;
-//   const config = {
-//     headers: {
-//       "Content-Type": "application/x-www-form-urlencoded",
-//       "Accept": "application/json",
-//     },
-//   };
-//
-//   const formData = {
-//     "features": JSON.stringify(data),
-//   };
-//
-//
-//   try {
-//     const result = await axios.post(url, formData, config);
-//     functions.logger.info(result);
-//     return result;
-//   } catch (error) {
-//     functions.logger.error(error);
-//     throw (error);
-//   }
-// };
-//
-// const updateDataInArcGIS = async (data: any) => {
-//   const url = `${POLYGON_FEATURE_SERVICE}/updateFeatures?f=json`;
-//   const config = {
-//     headers: {
-//       "Content-Type": "application/x-www-form-urlencoded",
-//       "Accept": "application/json",
-//     },
-//   };
-//
-//   const formData = {
-//     "features": JSON.stringify(data),
-//   };
-//
-//   try {
-//     const result = await axios.post(url, formData, config);
-//     functions.logger.info(result);
-//     return result;
-//   } catch (error) {
-//     functions.logger.error(error);
-//     throw (error);
-//   }
-// };
-
-// const processFarmerData = async ( data: FarmerData[] ) => {
-//   for (const farmer of data) {
-//     if (farmer) {
-//       functions.logger.info(`Processing farmer: ${farmer.uuid} ${farmer.name}`);
-//       try {
-//         if (farmer.uuid) {
-//           functions.logger.info(`Processing farmer data: ${JSON.stringify(farmer)}`);
-//
-//           const farmerRef = await admin.firestore().collection("farmers").doc(farmer.uuid).get();
-//           if (!farmerRef.exists) {
-//             await saveFeatureLayerDataToFirestoreAndFirebase(farmer);
-//
-//             // const addPolygonResult = await addPolygonDataToArcGIS(polygonFeature);
-//             // const addPointResult = await addPointDataToArcGIS(pointFeature);
-//
-//             // functions.logger.info("addPolygonResult", addPolygonResult);
-//             // functions.logger.info("addPointResult", addPointResult);
-//
-//
-//             // if (
-//             //
-//
-//             //   addPolygonResult.data.addResults[0].success.toString() == "true" ||
-//
-//             //     addPointResult.data.addResults[0].success.toString() == "true"
-//             // ) {
-//             //
-//             //   functions.logger.info( `Successfully added farmer with farmer_uuid ${ farmer.uuid } and farmer_name ${ farmer.name } to ArcGIS` );
-//             //   // const {objectId, globalId} = addPolygonResult.data.addResults[0];
-//             //
-//             //
-//             //
-//             //   functions.logger.info( `Successfully added farmer with object id ${ objectId } and global id ${ globalId } to Firestore - ${ farmer.uuid }` );
-//             // }
-//           } else {
-//             await saveFeatureLayerDataToFirestoreAndFirebase(farmer);
-//             // const feature = buildPolygonFeatureLayer( farmer );
-//             // functions.logger.info(
-//             //   "this is the feature: ",
-//             //   JSON.stringify(feature)
-//             // );
-//             // // update farmer in firestore
-//             // const result = await updateDataInArcGIS( feature );
-//             // functions.logger.info("this is the result: ", result);
-//             //
-//             // if (result.data.error) {
-//             //   throw new Error(result.data.error.details[0]);
-//             // }
-//             //
-//             // if (
-//             //   result.data.updateResults &&
-//             //     result.data.updateResults[0].success.toString() == "true"
-//             // ) {
-//             //
-//             //   if ( farmer.uuid != null ) {
-//             //
-//             //     await admin.firestore().collection( "farmers" ).doc( farmer.uuid ).update( {...farmer} );
-//             //   }
-//             //
-//             //   functions.logger.info(`Successfully updated farmer with farmer_uuid ${ farmer.uuid } and farmer_name ${ farmer.name } to ArcGIS` );
-//             // }
-//           }
-//         }
-//       } catch (error) {
-//         functions.logger.error(error);
-//         throw (error);
-//       }
-//     }
-//   }
-// };
-
-// const saveFeatureLayerDataToFirestoreAndFirebase = async (farmer: any) => {
-//   const polygonFeature = buildPolygonFeatureLayer(farmer);
-//   const pointFeature = buildPointFeatureLayer(farmer);
-//
-//   functions.logger.info("polygonFeature", polygonFeature);
-//   functions.logger.info("pointFeature", pointFeature);
-//
-//   await Promise.all([
-//     admin.firestore().collection( "farmers" ).doc( farmer.uuid ).set( {
-//       ...farmer,
-//       // objectId,
-//       // globalId,
-//     }),
-//     admin.database().ref(`"polygon-feature-layers"/${farmer.uuid}`).set({
-//       ...polygonFeature,
-//       lastUpdated: Date.now(),
-//     }),
-//     admin.database().ref(`"point-feature-layers"/${farmer.uuid}`).set({
-//       ...pointFeature,
-//       lastUpdated: Date.now(),
-//     }),
-//   ]);
-// };
 
 const saveAllDataToFirebase = async (data: FarmerData[]) => {
   for (const farmer of data) {
@@ -693,16 +526,3 @@ exports.manualSendPolygonFeatureLayersToArcGIS = functions.https.onRequest(async
   res.send("No uuid provided");
 });
 
-/* exports.generatePointFeatureLayers = functions.pubsub.schedule("every 30 minutes").onRun(async ( context ) => {
-  try {
-    const sasaDataListRef = admin.database().ref("/sasa-raw-data");
-    const snapshot = await sasaDataListRef.child("sasa-data-list").orderByChild("pointFeatureDataSynced").equalTo(false).limitToFirst(5).once( "value");
-    const availableData = snapshot.val();
-    if (!availableData) {
-      functions.logger.info( "No data to process" );
-      return;
-    }
-  } catch (error) {
-    functions.logger.error(error);
-  }
-});*/

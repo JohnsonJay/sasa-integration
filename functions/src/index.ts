@@ -53,6 +53,7 @@ const buildPointFeatureLayer = (farmer: FarmerData) => {
     };
 
     const attributes = {
+      objectId: farmer.objectId ? farmer.objectId : null,
       farmer_uuid: farmer.uuid ? farmer.uuid : null,
       farmer_name: farmer.name ? farmer.name : null,
       farmer_gender: farmer.demographic.gender,
@@ -78,6 +79,7 @@ const buildPolygonFeatureLayer = (farmer: FarmerData): {
     farmer_identity_type: string | null;
     farmer_field_uuid: string | null;
     farmer_uuid: string | null | undefined;
+    objectId: number | undefined;
     farmer_identity_number: string | null;
     farmer_name: string | null | undefined
   }
@@ -191,6 +193,7 @@ const buildPolygonFeatureLayer = (farmer: FarmerData): {
     };
 
     const attributes = {
+      objectId: farmer.objectId,
       farmer_uuid: farmer.uuid,
       farmer_name: farmer.name,
       farmer_field_uuid: farmer.fields && farmer.fields[0] ? farmer.fields[0].uuid : null,
@@ -259,14 +262,19 @@ const addPointDataToArcGIS = async (data: any) => {
 };
 
 const saveAllDataToFirebase = async (data: FarmerData[]) => {
+  let currentItemNumber = 1;
+
   for (const farmer of data) {
     await admin.database().ref(`sasa-raw-data/sasa-data-list/${farmer.uuid}`).set({
       ...farmer,
+      objectId: currentItemNumber,
       polygonFeatureDataSynced: false,
       pointFeatureDataSynced: false,
       lastPolygonDataSyncEvent: Date.now(),
       lastPointDataSyncEvent: Date.now(),
     });
+
+    currentItemNumber++;
   }
 };
 

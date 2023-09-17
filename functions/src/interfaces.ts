@@ -49,6 +49,7 @@ export interface FeatureLayer {
         },
     } | null;
     attributes: {
+        objectId?: number | null;
         farmer_uuid?: string | null;
         farmer_name?: string | null;
         farmer_field_uuid?: string | null;

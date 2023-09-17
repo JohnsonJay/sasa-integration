@@ -58,3 +58,10 @@ export interface FeatureLayer {
         farmer_created_at?: string | null;
     };
 }
+
+export interface FeatureLayerResponse {
+    globalId: string | null;
+    objectId: number;
+    success: boolean;
+    uniqueId: number;
+}

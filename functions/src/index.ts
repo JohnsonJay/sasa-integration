@@ -270,6 +270,8 @@ const saveAllDataToFirebase = async (data: FarmerData[]) => {
   }
 };
 
+// synchronise data on a daily basis
+
 exports.dailySasaDataSync = functions.pubsub.schedule("50 4 * * *").onRun(async ( context ) => {
   try {
     const data: FarmerData[] = await fetchData();
@@ -439,8 +441,6 @@ exports.sendPointFeatureLayersToArcGIS = functions.pubsub.schedule("every 30 min
     const snapshot = await polygonFeatureRef.child("point-layers-list").orderByChild("featureLayerCreated").equalTo(false).limitToFirst(5).once( "value");
     const availableData = snapshot.val();
 
-    const features = [];
-
     if (!availableData) {
       functions.logger.info( "No data to process" );
       return;
@@ -468,21 +468,15 @@ exports.sendPointFeatureLayersToArcGIS = functions.pubsub.schedule("every 30 min
           geometry: pointFeature.geometry,
           attributes: pointFeature.attributes,
         };
-
-        features.push(featureLayer);
-
-        await addPointDataToArcGIS(features);
+        const result = await addPointDataToArcGIS([featureLayer]);
+        const {objectId} = result.data.addResults[0];
 
         await admin.database().ref("point-feature-layers/point-layers-list").child(key).update({
+          objectId,
           featureLayerCreated: true,
           lastUpdated: Date.now(),
         });
       }
-    }
-
-    if (features.length < 1) {
-      functions.logger.info("No features to process");
-      return;
     }
   } catch (error) {
     functions.logger.error(error);
@@ -525,4 +519,3 @@ exports.manualSendPolygonFeatureLayersToArcGIS = functions.https.onRequest(async
 
   res.send("No uuid provided");
 });
-
